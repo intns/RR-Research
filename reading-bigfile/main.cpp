@@ -1,39 +1,15 @@
-#include <iostream>
+#include <bigfile.hpp>
 #include <fstream>
+#include <iostream>
 
-typedef unsigned long long u64;
-typedef unsigned long u32;
-typedef unsigned short u16;
-typedef unsigned char u8;
-
-typedef signed long long s64;
-typedef signed long s32;
-typedef signed short s16;
-typedef signed char s8;
-
-typedef float f32;
-typedef double f64;
-
-static s32 readS32(std::ifstream& file)
-{
-	s32 read = 0;
-	file.read(reinterpret_cast<char*>(&read), 4);
-	return read;
-}
-
-static s64 readS64(std::ifstream& file)
-{
-	s64 read = 0;
-	file.read(reinterpret_cast<char*>(&read), 8);
-	return read;
-}
-
+/*
 struct BIG_HEADER
 {
 	u32 m_magic = 0;
 	u32 m_unk4 = 0;
 	u32 m_unk8 = 0;
 	u32 m_unkC = 0;
+
 	u64 m_unk10 = 0;
 	u64 m_tableOffset = 0;
 	
@@ -53,7 +29,7 @@ struct BIG_HEADER
 int main(int argc, char** argv)
 {
 	std::ifstream a("rgh.bf", std::ios_base::binary);
-	a.seekg(0, std::ios_base::_Seekbeg);
+	util::fstream_reader reader(a);
 
 	BIG_HEADER header;
 	header.read(a);
@@ -63,8 +39,19 @@ int main(int argc, char** argv)
 		return EXIT_FAILURE;
 	}
 
-	a.seekg(0x2C, std::ios_base::_Seekbeg);
-	int files = readS32(a);
+	//a.seekg(0x2C, std::ios_base::_Seekbeg);
+	//int files = readS32(a);
 
 	return EXIT_SUCCESS;
+}*/
+
+int main(int argc, char** argv)
+{
+    std::ifstream bigfileStream("RGH.BF");
+    util::fstream_reader reader(bigfileStream);
+
+	BigFile file;
+    file.read(reader);
+
+    return EXIT_SUCCESS;
 }
