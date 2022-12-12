@@ -1,77 +1,97 @@
 #include <bigfile.hpp>
-#include <string>
 #include <iostream>
+#include <string>
 
-BigFile::Header::Header()
-    : m_magic(0)
-    , m_unk04(0)
-    , m_unk08(0)
-    , m_unk0C(0)
-    , m_unk10(0)
-    , m_tableOffset(0)
-    , m_unk20(0)
-    , m_unk24(0)
-    , m_unk28(0)
-    , m_fileCount(0)
-    , m_unk30(0)
-    , m_unk40(0)
-    , m_unk44(0)
-    , m_unk46(0)
+template<typename T>
+constexpr auto DATA_TO_U32(T x) { return (*((u32*)x)); }
+
+template <typename T>
+constexpr auto DATA_TO_U16(T x) { return (*((u16*)x)); }
+
+
+BigFile::BigFile()
 {
-}
-
-void BigFile::Header::read(util::fstream_reader& reader)
-{
-    m_magic = reader.readU32();
-    m_unk04 = reader.readU32();
-    m_unk08 = reader.readU32();
-    m_unk0C = reader.readU32();
-
-    m_unk10 = reader.readU64();
-    m_tableOffset = reader.readU64();
-
-    m_unk20 = reader.readU32();
-    m_unk24 = reader.readU32();
-    m_unk28 = reader.readU32();
-    m_fileCount = reader.readU32();
-    m_unk30 = reader.readU32();
-
-    reader.read_buffer((s8*)m_unk34, 0xC);
-
-    m_unk40 = reader.readU32();
-    m_unk44 = reader.readU16();
-    m_unk46 = reader.readU16();
+    std::memset(&mt_TmpBufComp, 0, sizeof(mt_TmpBufComp));
+    std::memset(&mt_TmpBufDict, 0, sizeof(mt_TmpBufDict));
+    std::memset(&maz_Name, 0, sizeof(maz_Name));
+    std::memset(&mt_Header, 0, sizeof(mt_Header));
+    mpo_KeyToPos = 0;
+    mdt_FatFiles = 0;
+    mdt_FatDirs = 0;
+    mdt_FatDescFiles = 0;
+    mdt_FatDescDirs = 0;
+    mb_readonly = false;
+    mLS = 0;
+    mu32_Flags = 0;
 }
 
 void BigFile::read(util::fstream_reader& reader)
 {
-    m_header.read(reader);
+    // Read header
+    reader.read_buffer((s8*)&mt_Header, sizeof(mt_Header));
+    if (mt_Header.u32_Mark != 'EBA') {
+        return;
+    }
 
-    if (m_header.m_unk44)
-    {
-        reader.readU32();
+    // Read fat files
+    mpo_KeyToPos = new TOOsarray();
+    mpo_KeyToPos->create(12, mt_Header.u32_MaxFiles, true);
 
-        struct DebugEntry {
-            u32 m_unk00;
-            u16 m_unk04;
-            u16 m_unk06;
-            std::string m_string;
-        };
+    mdt_FatFiles = new BIG_tt_File_[mt_Header.u32_MaxFiles];
+    std::memset(mdt_FatFiles, 0, sizeof(BIG_tt_File_) * mt_Header.u32_MaxFiles);
 
-        for (int i = 0; i < 10; i++) {
-            DebugEntry entry;
-            entry.m_unk00 = reader.readU32();
-            entry.m_unk04 = reader.readU16();
-            entry.m_unk06 = reader.readU16();
-            u8 toAdd = reader.readU8();
-            while (toAdd) {
-                entry.m_string += toAdd;
-                toAdd = reader.readU8();
+    mdt_FatDescFiles = new BIG_tt_Fat_[mt_Header.u32_NumFatFiles];
+    mdt_FatDescDirs = new BIG_tt_Fat_[mt_Header.u32_NumFatDirs];
+
+    readFATFiles(reader);
+}
+
+void BigFile::readFATFiles(util::fstream_reader& reader)
+{
+    constexpr u32 MAX_FILE_SIZE = 102400;
+    s8* fileData = new s8[MAX_FILE_SIZE];
+    std::memset(fileData, 0, MAX_FILE_SIZE);
+
+    i64_ filePosition = mt_Header.i64_PosFirstFatFiles;
+    s32 fileCount = mt_Header.u32_NumFiles;
+    u32 folderFileIndex = 0;
+
+    for (u32 i = 0; i < mt_Header.u32_NumFatFiles; i++) {
+        reader.setPosition(filePosition);
+        reader.read_buffer((s8*)&mdt_FatDescFiles[i], sizeof(BIG_tt_Fat_));
+
+        BIG_tt_Fat_& curFileDesc = mdt_FatDescFiles[i];
+        u32 fileSize = std::min(curFileDesc.u32_Size, (u32)fileCount);
+
+        for (u32 j = 0; j < fileSize;) {
+            u32 readAmt = std::min(512u, fileSize - j);
+
+            reader.read_buffer(fileData, 200 * readAmt);
+            BIG_tt_File_* currFiles = &mdt_FatFiles[folderFileIndex + j];
+
+            u32 internalPos = 0;
+            for (u32 k = 0; k < readAmt; k++) {
+                BIG_tt_File_& currFile = currFiles[k];
+                s8* fileDataPos = &fileData[internalPos];
+
+                // Copy file name
+                std::strncpy(currFile.az_Name, fileDataPos, 64);
+                currFile.az_Name[63] = '\0';
+
+                currFile.u32_LengthDisk = DATA_TO_U32(&fileDataPos[88]);
+                currFile.h_Key = DATA_TO_U32(&fileDataPos[100]);
+                currFile.i64_Pos.High = DATA_TO_U32(&fileDataPos[104]);
+                currFile.i64_Pos.Low = DATA_TO_U32(&fileDataPos[108]);
+                currFile.u16_PermanentFlags = DATA_TO_U16(&fileDataPos[112]);
+
+                internalPos += 200;
             }
 
-            std::cout << entry.m_string << std::endl;
+            j += readAmt;
         }
 
-        // 142
+        fileCount -= curFileDesc.u32_Size;
+        folderFileIndex += curFileDesc.u32_Size;
+        filePosition = curFileDesc.i64_NextFatPos;
     }
 }

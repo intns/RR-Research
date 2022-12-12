@@ -367,3 +367,5 @@ FodyWeavers.xsd
 
 # LyN Compressed Files
 *.bf
+*.sns
+*.bak

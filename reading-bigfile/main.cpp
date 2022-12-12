@@ -1,57 +1,51 @@
 #include <bigfile.hpp>
+#include <bitset>
 #include <fstream>
 #include <iostream>
-
-/*
-struct BIG_HEADER
-{
-	u32 m_magic = 0;
-	u32 m_unk4 = 0;
-	u32 m_unk8 = 0;
-	u32 m_unkC = 0;
-
-	u64 m_unk10 = 0;
-	u64 m_tableOffset = 0;
-	
-	void read(std::ifstream& file)
-	{
-		m_magic = readS32(file);
-		m_unk4 = readS32(file);
-		m_unk8 = readS32(file);
-		m_unkC = readS32(file);
-
-		m_unk10 = readS64(file);
-		m_tableOffset = readS64(file);
-		std::printf("%d\n%d\n%d\n%d\n%lld\n%lld\n", m_magic, m_unk4, m_unk8, m_unkC, m_unk10, m_tableOffset);
-	}
-};
+#include <string>
 
 int main(int argc, char** argv)
 {
-	std::ifstream a("rgh.bf", std::ios_base::binary);
-	util::fstream_reader reader(a);
+    std::ifstream stream("RxN.$hd$.bik.bf");
+    util::fstream_reader reader(stream);
 
-	BIG_HEADER header;
-	header.read(a);
-	if (header.m_magic != 'EBA')
-	{
-		std::cout << "Incorrect magic\n";
-		return EXIT_FAILURE;
-	}
-
-	//a.seekg(0x2C, std::ios_base::_Seekbeg);
-	//int files = readS32(a);
-
-	return EXIT_SUCCESS;
-}*/
-
-int main(int argc, char** argv)
-{
-    std::ifstream bigfileStream("RGH.BF");
-    util::fstream_reader reader(bigfileStream);
-
-	BigFile file;
+    BigFile file;
     file.read(reader);
+
+    for (u32 i = 0; i < 255; i++) {
+        const auto& user = file.mt_Header.at_Users[i];
+        if (user.az_User[0] == '\0') {
+            break;
+        }
+
+        for (u32 j = 0; j < 12; j++) {
+            if (user.az_User[j] == '\0') {
+                memset((void*)&user.az_User[j], ' ', 1);
+            }
+        }
+
+        std::cout << "USER: " << user.az_User << " RIGHTS:\T" << std::hex << user.u32_Rights << std::dec << std::endl;
+    }
+
+    std::cout << "FAT FILES" << std::endl;
+    for (u32 i = 0; i < file.mt_Header.u32_NumFatFiles; i++) {
+        BIG_tt_File_& fatFile = file.mdt_FatFiles[i];
+
+        reader.setPosition(fatFile.i64_Pos.Low);
+
+        s8* file = new s8[fatFile.u32_LengthDisk];
+        reader.read_buffer(file, fatFile.u32_LengthDisk);
+
+        std::ofstream out(fatFile.az_Name);
+        out.write((const char*)file, fatFile.u32_LengthDisk);
+        out.close();
+
+        delete[] file;
+
+        std::cout << "FILENAME: " << fatFile.az_Name << std::endl;
+        std::cout << "FILESIZE: " << fatFile.u32_LengthDisk << std::endl
+                  << std::endl;
+    }
 
     return EXIT_SUCCESS;
 }
